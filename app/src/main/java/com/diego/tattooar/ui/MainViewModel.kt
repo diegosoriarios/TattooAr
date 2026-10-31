@@ -32,7 +32,7 @@ sealed class AppScreen {
     data class ArPreview(val design: TattooDesign) : AppScreen()
 }
 
-class MainViewModel(
+class MainViewModel @JvmOverloads constructor(
     application: Application,
     private val imageAdapter: TattooImageAdapter = LocalTattooImageAdapter()
 ) : AndroidViewModel(application) {
