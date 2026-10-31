@@ -3,6 +3,10 @@ package com.diego.tattooar.ui
 import android.app.Application
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.SystemClock
+import android.util.Log
+import androidx.annotation.OptIn
+import androidx.camera.core.ExperimentalGetImage
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -16,10 +20,14 @@ import com.diego.tattooar.domain.tracking.ARCoreFaceTracker
 import com.diego.tattooar.domain.tracking.HandLandmarkerHelper
 import com.diego.tattooar.domain.tracking.LandmarkAnchorEngine
 import com.diego.tattooar.domain.tracking.PoseLandmarkerHelper
+import com.diego.tattooar.domain.tracking.PreviewCoordinateMapper
 import com.diego.tattooar.domain.tracking.SegmentationOcclusionHelper
 import com.diego.tattooar.domain.tracking.SkinToneLightingAnalyzer
 import com.diego.tattooar.domain.tracking.TargetBodyPart
+import com.diego.tattooar.domain.tracking.toUprightBitmap
 import com.diego.tattooar.ui.render.TattooTransformState
+import com.google.mediapipe.tasks.vision.handlandmarker.HandLandmarkerResult
+import com.google.mediapipe.tasks.vision.poselandmarker.PoseLandmarkerResult
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -47,6 +55,18 @@ class MainViewModel @JvmOverloads constructor(
     private var poseLandmarkerHelper: PoseLandmarkerHelper? = null
     private var arCoreFaceTracker: ARCoreFaceTracker? = null
     private var segmentationOcclusionHelper: SegmentationOcclusionHelper? = null
+
+    @Volatile
+    private var viewportWidth: Float = 0f
+
+    @Volatile
+    private var viewportHeight: Float = 0f
+
+    private val _trackingError = MutableStateFlow<String?>(null)
+    val trackingError: StateFlow<String?> = _trackingError.asStateFlow()
+
+    private val _isTrackingReady = MutableStateFlow(false)
+    val isTrackingReady: StateFlow<Boolean> = _isTrackingReady.asStateFlow()
 
     private val _currentScreen = MutableStateFlow<AppScreen>(AppScreen.Gallery)
     val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
@@ -97,64 +117,23 @@ class MainViewModel @JvmOverloads constructor(
             try {
                 handLandmarkerHelper = HandLandmarkerHelper(
                     context = getApplication(),
-                    onResult = { result, bitmap ->
-                        val landmarks = result?.landmarks()?.firstOrNull()
-                        val timestampMs = System.currentTimeMillis()
-
-                        if (landmarks != null && landmarks.size >= 21) {
-                            val anchor = landmarkAnchorEngine.computeAnchor(
-                                landmarks = landmarks,
-                                screenWidth = bitmap.width.toFloat(),
-                                screenHeight = bitmap.height.toFloat(),
-                                timestampMs = timestampMs
-                            )
-
-                            val lightingMetrics = SkinToneLightingAnalyzer.analyzeSkinLighting(bitmap)
-
-                            transformState.trackedTranslationX = anchor.anchorX
-                            transformState.trackedTranslationY = anchor.anchorY
-                            transformState.trackedScale = anchor.scale
-                            transformState.trackedRotationAngle = anchor.rotationAngle
-                            transformState.isTrackingActive = true
-                            transformState.skinLuminance = lightingMetrics.luminance
-
-                            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
-                        } else {
-                            transformState.isTrackingActive = false
-                            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
-                        }
-                    }
+                    onResult = ::handleHandResult,
+                    onError = ::reportTrackingError,
+                    onReady = { _isTrackingReady.value = true }
                 )
             } catch (t: Throwable) {
-                t.printStackTrace()
+                reportTrackingError("Hand tracking unavailable: ${t.message ?: t.javaClass.simpleName}")
             }
 
             try {
                 poseLandmarkerHelper = PoseLandmarkerHelper(
                     context = getApplication(),
-                    onResult = { result, bitmap ->
-                        val bodyAnchor = poseLandmarkerHelper?.computeBodyAnchor(
-                            result = result,
-                            targetPart = transformState.targetBodyPart,
-                            screenWidth = bitmap.width.toFloat(),
-                            screenHeight = bitmap.height.toFloat()
-                        )
-
-                        if (bodyAnchor != null && bodyAnchor.isTracked) {
-                            transformState.trackedTranslationX = bodyAnchor.anchorX
-                            transformState.trackedTranslationY = bodyAnchor.anchorY
-                            transformState.trackedScale = bodyAnchor.scale
-                            transformState.trackedRotationAngle = bodyAnchor.rotationAngle
-                            transformState.isTrackingActive = true
-                            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
-                        } else {
-                            transformState.isTrackingActive = false
-                            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
-                        }
-                    }
+                    onResult = ::handlePoseResult,
+                    onError = ::reportTrackingError,
+                    onReady = { _isTrackingReady.value = true }
                 )
             } catch (t: Throwable) {
-                t.printStackTrace()
+                reportTrackingError("Body tracking unavailable: ${t.message ?: t.javaClass.simpleName}")
             }
 
             try {
@@ -176,21 +155,153 @@ class MainViewModel @JvmOverloads constructor(
         }
     }
 
+    fun retryTracking() {
+        handLandmarkerHelper?.close()
+        poseLandmarkerHelper?.close()
+        handLandmarkerHelper = null
+        poseLandmarkerHelper = null
+        landmarkAnchorEngine.reset()
+        _trackingError.value = null
+        _isTrackingReady.value = false
+        initTrackingEngines()
+    }
+
+    fun setViewportSize(width: Float, height: Float) {
+        viewportWidth = width
+        viewportHeight = height
+    }
+
+    private fun reportTrackingError(message: String) {
+        Log.e(TAG, message)
+        _trackingError.value = message
+    }
+
+    private fun handleHandResult(result: HandLandmarkerResult?, bitmap: Bitmap) {
+        val landmarks = result?.landmarks()?.firstOrNull()
+
+        if (landmarks != null && landmarks.size >= 21) {
+            val anchor = landmarkAnchorEngine.computeAnchor(
+                landmarks = landmarks,
+                imageWidth = bitmap.width.toFloat(),
+                imageHeight = bitmap.height.toFloat(),
+                timestampMs = SystemClock.uptimeMillis()
+            )
+
+            val lightingMetrics = SkinToneLightingAnalyzer.analyzeSkinLighting(bitmap)
+            applyNormalizedAnchor(
+                normalizedX = anchor.normalizedX,
+                normalizedY = anchor.normalizedY,
+                normalizedLength = anchor.normalizedLength,
+                rotationAngle = anchor.rotationAngle,
+                imageWidth = bitmap.width,
+                imageHeight = bitmap.height
+            )
+            transformState.skinLuminance = lightingMetrics.luminance
+            transformState.isTrackingActive = true
+            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
+            clearTrackingError()
+        } else {
+            transformState.isTrackingActive = false
+            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
+        }
+    }
+
+    private fun handlePoseResult(result: PoseLandmarkerResult?, bitmap: Bitmap) {
+        val bodyAnchor = poseLandmarkerHelper?.computeBodyAnchor(
+            result = result,
+            targetPart = transformState.targetBodyPart,
+            imageWidth = bitmap.width.toFloat(),
+            imageHeight = bitmap.height.toFloat()
+        )
+
+        if (bodyAnchor != null && bodyAnchor.isTracked) {
+            applyNormalizedAnchor(
+                normalizedX = bodyAnchor.normalizedX,
+                normalizedY = bodyAnchor.normalizedY,
+                normalizedLength = bodyAnchor.normalizedLength,
+                rotationAngle = bodyAnchor.rotationAngle,
+                imageWidth = bitmap.width,
+                imageHeight = bitmap.height
+            )
+            transformState.isTrackingActive = true
+            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
+            clearTrackingError()
+        } else {
+            transformState.isTrackingActive = false
+            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
+        }
+    }
+
+    private fun applyNormalizedAnchor(
+        normalizedX: Float,
+        normalizedY: Float,
+        normalizedLength: Float,
+        rotationAngle: Float,
+        imageWidth: Int,
+        imageHeight: Int
+    ) {
+        val viewWidth = if (viewportWidth > 0f) viewportWidth else imageWidth.toFloat()
+        val viewHeight = if (viewportHeight > 0f) viewportHeight else imageHeight.toFloat()
+        val mapping = PreviewCoordinateMapper.fillCenterMapping(
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            viewWidth = viewWidth,
+            viewHeight = viewHeight
+        )
+
+        val (screenX, screenY) = PreviewCoordinateMapper.toViewCenter(
+            normalizedX = normalizedX,
+            normalizedY = normalizedY,
+            imageWidth = imageWidth,
+            imageHeight = imageHeight,
+            viewWidth = viewWidth,
+            viewHeight = viewHeight,
+            mapping = mapping
+        )
+
+        val screenLength = normalizedLength * imageWidth * mapping.scale
+        transformState.trackedTranslationX = screenX
+        transformState.trackedTranslationY = screenY
+        transformState.trackedScale = (screenLength / (viewWidth * 0.25f)).coerceIn(0.3f, 4.0f)
+        transformState.trackedRotationAngle = rotationAngle
+    }
+
+    private fun clearTrackingError() {
+        if (_trackingError.value != null) {
+            _trackingError.value = null
+        }
+    }
+
+    @OptIn(ExperimentalGetImage::class)
     fun processFrameForTracking(imageProxy: ImageProxy) {
         if (!transformState.isAutoTrackingEnabled) {
             imageProxy.close()
             return
         }
 
+        val bitmap = imageProxy.toUprightBitmap()
+        imageProxy.close()
+        val timestampMs = SystemClock.uptimeMillis()
+
         when (transformState.targetBodyPart) {
             TargetBodyPart.HAND_FOREARM -> {
-                handLandmarkerHelper?.detectAsync(imageProxy) ?: imageProxy.close()
+                val helper = handLandmarkerHelper
+                if (helper != null) {
+                    helper.detect(bitmap, timestampMs)
+                } else {
+                    bitmap.recycle()
+                }
             }
             TargetBodyPart.UPPER_ARM, TargetBodyPart.CHEST_TORSO, TargetBodyPart.LEG_THIGH -> {
-                poseLandmarkerHelper?.detectAsync(imageProxy) ?: imageProxy.close()
+                val helper = poseLandmarkerHelper
+                if (helper != null) {
+                    helper.detect(bitmap, timestampMs)
+                } else {
+                    bitmap.recycle()
+                }
             }
             TargetBodyPart.FACE_NECK -> {
-                imageProxy.close()
+                bitmap.recycle()
             }
         }
     }
@@ -280,5 +391,9 @@ class MainViewModel @JvmOverloads constructor(
         poseLandmarkerHelper?.close()
         arCoreFaceTracker?.close()
         segmentationOcclusionHelper?.close()
+    }
+
+    companion object {
+        private const val TAG = "MainViewModel"
     }
 }

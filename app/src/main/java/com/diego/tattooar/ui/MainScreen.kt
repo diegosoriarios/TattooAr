@@ -9,6 +9,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -69,6 +70,8 @@ fun MainScreen(
     val showDisclaimer by viewModel.showDisclaimer.collectAsState()
     val showPickerBottomSheet by viewModel.showPickerBottomSheet.collectAsState()
     val showArtistBookingDialog by viewModel.showArtistBookingDialog.collectAsState()
+    val trackingError by viewModel.trackingError.collectAsState()
+    val isTrackingReady by viewModel.isTrackingReady.collectAsState()
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -113,9 +116,15 @@ fun MainScreen(
         return
     }
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier.fillMaxSize()
     ) {
+        val viewportWidthPx = constraints.maxWidth.toFloat()
+        val viewportHeightPx = constraints.maxHeight.toFloat()
+        LaunchedEffect(viewportWidthPx, viewportHeightPx) {
+            viewModel.setViewportSize(viewportWidthPx, viewportHeightPx)
+        }
+
         // CameraX Live Stream & Analysis
         CameraPreview(
             modifier = Modifier.fillMaxSize(),
@@ -176,6 +185,9 @@ fun MainScreen(
         // Controls Bar & Sliders
         TattooControlsOverlay(
             transformState = viewModel.transformState,
+            trackingError = trackingError,
+            isTrackingReady = isTrackingReady,
+            onRetryTracking = { viewModel.retryTracking() },
             onOpenPicker = { viewModel.openPicker() },
             onTakeSnapshot = {
                 val capturedBitmap = SnapshotHelper.captureBitmapFromView(view)

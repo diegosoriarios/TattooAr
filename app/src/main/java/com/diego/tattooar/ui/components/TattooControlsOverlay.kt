@@ -3,6 +3,7 @@ package com.diego.tattooar.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -54,6 +55,9 @@ fun TattooControlsOverlay(
     transformState: TattooTransformState,
     onOpenPicker: () -> Unit,
     onTakeSnapshot: () -> Unit,
+    trackingError: String? = null,
+    isTrackingReady: Boolean = false,
+    onRetryTracking: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     var showSliders by remember { mutableStateOf(false) }
@@ -131,20 +135,33 @@ fun TattooControlsOverlay(
                 }
 
                 // Tracking Status Badge
+                val trackingStatusText = when {
+                    trackingError != null -> "Tracking unavailable (tap to retry)"
+                    !isTrackingReady -> "Initializing..."
+                    !transformState.isAutoTrackingEnabled -> "Manual 2D"
+                    transformState.isTrackingActive -> "Anchored"
+                    else -> "Searching..."
+                }
+                val trackingStatusColor = when {
+                    trackingError != null -> Color(0xFFB71C1C).copy(alpha = 0.9f)
+                    !isTrackingReady -> Color.Black.copy(alpha = 0.6f)
+                    !transformState.isAutoTrackingEnabled -> Color.Black.copy(alpha = 0.6f)
+                    transformState.isTrackingActive -> Color(0xFF1B5E20).copy(alpha = 0.85f)
+                    else -> Color(0xFFE65100).copy(alpha = 0.85f)
+                }
+
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = if (transformState.isAutoTrackingEnabled && transformState.isTrackingActive)
-                        Color(0xFF1B5E20).copy(alpha = 0.85f)
-                    else if (transformState.isAutoTrackingEnabled)
-                        Color(0xFFE65100).copy(alpha = 0.85f)
-                    else
-                        Color.Black.copy(alpha = 0.6f),
-                    contentColor = Color.White
+                    color = trackingStatusColor,
+                    contentColor = Color.White,
+                    modifier = if (trackingError != null) {
+                        Modifier.clickable { onRetryTracking() }
+                    } else {
+                        Modifier
+                    }
                 ) {
                     Text(
-                        text = if (!transformState.isAutoTrackingEnabled) "Manual 2D"
-                        else if (transformState.isTrackingActive) "Anchored"
-                        else "Searching...",
+                        text = trackingStatusText,
                         style = MaterialTheme.typography.labelMedium,
                         modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
                     )
