@@ -57,8 +57,8 @@ class SegmentationOcclusionHelper(
                     .build()
 
                 imageSegmenter = ImageSegmenter.createFromOptions(context, options)
-            } catch (e: Exception) {
-                onError("MediaPipe ImageSegmenter initialization: ${e.localizedMessage}")
+            } catch (t: Throwable) {
+                onError("MediaPipe ImageSegmenter initialization: ${t.localizedMessage}")
             }
         }
     }

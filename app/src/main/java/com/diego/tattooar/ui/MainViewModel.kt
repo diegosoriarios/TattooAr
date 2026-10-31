@@ -93,69 +93,87 @@ class MainViewModel @JvmOverloads constructor(
     }
 
     private fun initTrackingEngines() {
-        handLandmarkerHelper = HandLandmarkerHelper(
-            context = getApplication(),
-            onResult = { result, bitmap ->
-                val landmarks = result?.landmarks()?.firstOrNull()
-                val timestampMs = System.currentTimeMillis()
+        viewModelScope.launch(Dispatchers.Default) {
+            try {
+                handLandmarkerHelper = HandLandmarkerHelper(
+                    context = getApplication(),
+                    onResult = { result, bitmap ->
+                        val landmarks = result?.landmarks()?.firstOrNull()
+                        val timestampMs = System.currentTimeMillis()
 
-                if (landmarks != null && landmarks.size >= 21) {
-                    val anchor = landmarkAnchorEngine.computeAnchor(
-                        landmarks = landmarks,
-                        screenWidth = bitmap.width.toFloat(),
-                        screenHeight = bitmap.height.toFloat(),
-                        timestampMs = timestampMs
-                    )
+                        if (landmarks != null && landmarks.size >= 21) {
+                            val anchor = landmarkAnchorEngine.computeAnchor(
+                                landmarks = landmarks,
+                                screenWidth = bitmap.width.toFloat(),
+                                screenHeight = bitmap.height.toFloat(),
+                                timestampMs = timestampMs
+                            )
 
-                    val lightingMetrics = SkinToneLightingAnalyzer.analyzeSkinLighting(bitmap)
+                            val lightingMetrics = SkinToneLightingAnalyzer.analyzeSkinLighting(bitmap)
 
-                    transformState.trackedTranslationX = anchor.anchorX
-                    transformState.trackedTranslationY = anchor.anchorY
-                    transformState.trackedScale = anchor.scale
-                    transformState.trackedRotationAngle = anchor.rotationAngle
-                    transformState.isTrackingActive = true
-                    transformState.skinLuminance = lightingMetrics.luminance
+                            transformState.trackedTranslationX = anchor.anchorX
+                            transformState.trackedTranslationY = anchor.anchorY
+                            transformState.trackedScale = anchor.scale
+                            transformState.trackedRotationAngle = anchor.rotationAngle
+                            transformState.isTrackingActive = true
+                            transformState.skinLuminance = lightingMetrics.luminance
 
-                    transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
-                } else {
-                    transformState.isTrackingActive = false
-                    transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
-                }
-            }
-        )
-
-        poseLandmarkerHelper = PoseLandmarkerHelper(
-            context = getApplication(),
-            onResult = { result, bitmap ->
-                val bodyAnchor = poseLandmarkerHelper?.computeBodyAnchor(
-                    result = result,
-                    targetPart = transformState.targetBodyPart,
-                    screenWidth = bitmap.width.toFloat(),
-                    screenHeight = bitmap.height.toFloat()
+                            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
+                        } else {
+                            transformState.isTrackingActive = false
+                            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
+                        }
+                    }
                 )
-
-                if (bodyAnchor != null && bodyAnchor.isTracked) {
-                    transformState.trackedTranslationX = bodyAnchor.anchorX
-                    transformState.trackedTranslationY = bodyAnchor.anchorY
-                    transformState.trackedScale = bodyAnchor.scale
-                    transformState.trackedRotationAngle = bodyAnchor.rotationAngle
-                    transformState.isTrackingActive = true
-                    transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
-                } else {
-                    transformState.isTrackingActive = false
-                    transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
-                }
+            } catch (t: Throwable) {
+                t.printStackTrace()
             }
-        )
 
-        arCoreFaceTracker = ARCoreFaceTracker(getApplication()).apply {
-            initializeSession()
+            try {
+                poseLandmarkerHelper = PoseLandmarkerHelper(
+                    context = getApplication(),
+                    onResult = { result, bitmap ->
+                        val bodyAnchor = poseLandmarkerHelper?.computeBodyAnchor(
+                            result = result,
+                            targetPart = transformState.targetBodyPart,
+                            screenWidth = bitmap.width.toFloat(),
+                            screenHeight = bitmap.height.toFloat()
+                        )
+
+                        if (bodyAnchor != null && bodyAnchor.isTracked) {
+                            transformState.trackedTranslationX = bodyAnchor.anchorX
+                            transformState.trackedTranslationY = bodyAnchor.anchorY
+                            transformState.trackedScale = bodyAnchor.scale
+                            transformState.trackedRotationAngle = bodyAnchor.rotationAngle
+                            transformState.isTrackingActive = true
+                            transformState.trackingAlpha = (transformState.trackingAlpha + 0.15f).coerceAtMost(1.0f)
+                        } else {
+                            transformState.isTrackingActive = false
+                            transformState.trackingAlpha = (transformState.trackingAlpha - 0.1f).coerceAtLeast(0.0f)
+                        }
+                    }
+                )
+            } catch (t: Throwable) {
+                t.printStackTrace()
+            }
+
+            try {
+                arCoreFaceTracker = ARCoreFaceTracker(getApplication()).apply {
+                    initializeSession()
+                }
+            } catch (t: Throwable) {
+                t.printStackTrace()
+            }
+
+            try {
+                segmentationOcclusionHelper = SegmentationOcclusionHelper(
+                    context = getApplication(),
+                    onMaskGenerated = { _ -> }
+                )
+            } catch (t: Throwable) {
+                t.printStackTrace()
+            }
         }
-
-        segmentationOcclusionHelper = SegmentationOcclusionHelper(
-            context = getApplication(),
-            onMaskGenerated = { _ -> }
-        )
     }
 
     fun processFrameForTracking(imageProxy: ImageProxy) {
@@ -166,10 +184,10 @@ class MainViewModel @JvmOverloads constructor(
 
         when (transformState.targetBodyPart) {
             TargetBodyPart.HAND_FOREARM -> {
-                handLandmarkerHelper?.detectAsync(imageProxy)
+                handLandmarkerHelper?.detectAsync(imageProxy) ?: imageProxy.close()
             }
             TargetBodyPart.UPPER_ARM, TargetBodyPart.CHEST_TORSO, TargetBodyPart.LEG_THIGH -> {
-                poseLandmarkerHelper?.detectAsync(imageProxy)
+                poseLandmarkerHelper?.detectAsync(imageProxy) ?: imageProxy.close()
             }
             TargetBodyPart.FACE_NECK -> {
                 imageProxy.close()

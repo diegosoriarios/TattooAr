@@ -72,8 +72,8 @@ class PoseLandmarkerHelper(
                     .build()
 
                 poseLandmarker = PoseLandmarker.createFromOptions(context, options)
-            } catch (e: Exception) {
-                onError("MediaPipe PoseLandmarker initialization: ${e.localizedMessage}")
+            } catch (t: Throwable) {
+                onError("MediaPipe PoseLandmarker initialization: ${t.localizedMessage}")
             }
         }
     }

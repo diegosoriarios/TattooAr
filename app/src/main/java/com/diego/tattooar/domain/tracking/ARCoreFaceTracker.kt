@@ -1,10 +1,10 @@
 package com.diego.tattooar.domain.tracking
 
 import android.content.Context
+import com.google.ar.core.ArCoreApk
 import com.google.ar.core.AugmentedFace
 import com.google.ar.core.Config
 import com.google.ar.core.Session
-import com.google.ar.core.exceptions.UnavailableException
 
 data class FaceAnchorData(
     val centerX: Float,
@@ -20,18 +20,20 @@ class ARCoreFaceTracker(private val context: Context) {
 
     fun initializeSession(): Boolean {
         return try {
-            arSession = Session(context).apply {
-                val config = Config(this).apply {
-                    augmentedFaceMode = Config.AugmentedFaceMode.MESH3D
+            val availability = ArCoreApk.getInstance().checkAvailability(context)
+            if (availability.isSupported) {
+                arSession = Session(context).apply {
+                    val config = Config(this).apply {
+                        augmentedFaceMode = Config.AugmentedFaceMode.MESH3D
+                    }
+                    configure(config)
                 }
-                configure(config)
+                true
+            } else {
+                false
             }
-            true
-        } catch (e: UnavailableException) {
-            e.printStackTrace()
-            false
-        } catch (e: Exception) {
-            e.printStackTrace()
+        } catch (t: Throwable) {
+            t.printStackTrace()
             false
         }
     }
@@ -47,11 +49,9 @@ class ARCoreFaceTracker(private val context: Context) {
         val centerPose = face.centerPose
         val translation = centerPose.translation
 
-        // Screen mapping approximation
         val screenX = (translation[0] * screenWidth * 0.5f)
         val screenY = (-translation[1] * screenHeight * 0.5f)
 
-        // Rotation & distance estimation
         val rotMatrix = FloatArray(16)
         centerPose.toMatrix(rotMatrix, 0)
         val scaleFactor = (1.0f / (translation[2].coerceAtLeast(0.2f))).coerceIn(0.5f, 3.0f)
@@ -66,7 +66,11 @@ class ARCoreFaceTracker(private val context: Context) {
     }
 
     fun close() {
-        arSession?.close()
+        try {
+            arSession?.close()
+        } catch (t: Throwable) {
+            t.printStackTrace()
+        }
         arSession = null
     }
 }

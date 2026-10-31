@@ -57,8 +57,8 @@ class HandLandmarkerHelper(
                     .build()
 
                 handLandmarker = HandLandmarker.createFromOptions(context, options)
-            } catch (e: Exception) {
-                onError("MediaPipe HandLandmarker initialization: ${e.localizedMessage}")
+            } catch (t: Throwable) {
+                onError("MediaPipe HandLandmarker initialization: ${t.localizedMessage}")
             }
         }
     }
