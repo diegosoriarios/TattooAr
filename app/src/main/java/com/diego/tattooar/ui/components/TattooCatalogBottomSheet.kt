@@ -4,7 +4,6 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -50,11 +49,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
 import com.diego.tattooar.data.model.TattooDesign
-import com.diego.tattooar.domain.image.BackgroundRemovalHelper
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -78,7 +74,7 @@ fun TattooCatalogBottomSheet(
         }
     }
 
-    val categories = listOf("All", "Favorites", "Tribal", "Floral", "Geometric", "Gothic", "Minimalist")
+    val categories = listOf("All", "Favorites", "Tribal", "Floral", "Geometric")
 
     val filteredDesigns = TattooDesign.SAMPLES.filter { design ->
         val matchesCategory = when (selectedCategory) {
@@ -186,7 +182,6 @@ fun TattooCatalogBottomSheet(
                 items(filteredDesigns) { design ->
                     val isSelected = selectedDesign?.id == design.id
                     val isFavorite = favoriteIds.contains(design.id)
-                    val sampleBitmap = BackgroundRemovalHelper.createSampleDesignBitmap(design.id)
 
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
@@ -207,13 +202,11 @@ fun TattooCatalogBottomSheet(
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Image(
-                                bitmap = sampleBitmap.asImageBitmap(),
-                                contentDescription = design.title,
+                            TattooThumbnail(
+                                design = design,
                                 modifier = Modifier
                                     .size(75.dp)
-                                    .padding(4.dp),
-                                contentScale = ContentScale.Fit
+                                    .padding(4.dp)
                             )
 
                             // Favorite Icon

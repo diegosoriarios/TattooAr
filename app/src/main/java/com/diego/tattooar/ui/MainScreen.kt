@@ -10,11 +10,21 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -48,7 +58,8 @@ import com.diego.tattooar.ui.snapshot.SnapshotHelper
 
 @Composable
 fun MainScreen(
-    viewModel: MainViewModel = viewModel()
+    viewModel: MainViewModel = viewModel(),
+    onBackToGallery: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val view = LocalView.current
@@ -131,6 +142,33 @@ fun MainScreen(
                     skinLuminance = viewModel.transformState.skinLuminance,
                     isMeshWrappingEnabled = viewModel.transformState.isMeshWrappingEnabled,
                     meshCurvatureFactor = viewModel.transformState.meshCurvatureFactor
+                )
+            }
+        }
+
+        // Top Navigation Bar (Back to Gallery)
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopStart)
+                .padding(top = 48.dp, start = 16.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = Color.Black.copy(alpha = 0.65f),
+            contentColor = Color.White
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                IconButton(onClick = onBackToGallery) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                        contentDescription = "Back to Gallery"
+                    )
+                }
+                Text(
+                    text = selectedDesign?.title ?: "AR Preview",
+                    style = MaterialTheme.typography.titleSmall,
+                    modifier = Modifier.padding(end = 12.dp)
                 )
             }
         }

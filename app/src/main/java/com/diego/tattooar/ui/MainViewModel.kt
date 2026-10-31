@@ -2,18 +2,16 @@ package com.diego.tattooar.ui
 
 import android.app.Application
 import android.graphics.Bitmap
-import android.graphics.ImageDecoder
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.diego.tattooar.data.adapter.LocalTattooImageAdapter
+import com.diego.tattooar.data.adapter.TattooImageAdapter
 import com.diego.tattooar.data.datastore.UserPreferencesRepository
 import com.diego.tattooar.data.model.TattooDesign
 import com.diego.tattooar.data.model.TattooDesignSource
 import com.diego.tattooar.data.repository.TattooRepository
-import com.diego.tattooar.domain.image.BackgroundRemovalHelper
 import com.diego.tattooar.domain.tracking.ARCoreFaceTracker
 import com.diego.tattooar.domain.tracking.HandLandmarkerHelper
 import com.diego.tattooar.domain.tracking.LandmarkAnchorEngine
@@ -29,7 +27,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class MainViewModel(application: Application) : AndroidViewModel(application) {
+sealed class AppScreen {
+    object Gallery : AppScreen()
+    data class ArPreview(val design: TattooDesign) : AppScreen()
+}
+
+class MainViewModel(
+    application: Application,
+    private val imageAdapter: TattooImageAdapter = LocalTattooImageAdapter()
+) : AndroidViewModel(application) {
 
     private val userPreferencesRepository = UserPreferencesRepository(application)
     private val repository = TattooRepository(application)
@@ -41,6 +47,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private var poseLandmarkerHelper: PoseLandmarkerHelper? = null
     private var arCoreFaceTracker: ARCoreFaceTracker? = null
     private var segmentationOcclusionHelper: SegmentationOcclusionHelper? = null
+
+    private val _currentScreen = MutableStateFlow<AppScreen>(AppScreen.Gallery)
+    val currentScreen: StateFlow<AppScreen> = _currentScreen.asStateFlow()
+
+    private val _availableDesigns = MutableStateFlow<List<TattooDesign>>(emptyList())
+    val availableDesigns: StateFlow<List<TattooDesign>> = _availableDesigns.asStateFlow()
 
     private val _selectedDesign = MutableStateFlow<TattooDesign?>(TattooDesign.SAMPLES.first())
     val selectedDesign: StateFlow<TattooDesign?> = _selectedDesign.asStateFlow()
@@ -59,9 +71,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         checkDisclaimer()
-        selectDesign(TattooDesign.SAMPLES.first())
+        loadAvailableDesigns()
         initTrackingEngines()
         seedDatabase()
+    }
+
+    private fun loadAvailableDesigns() {
+        viewModelScope.launch {
+            val designs = imageAdapter.getTattooDesigns()
+            _availableDesigns.value = designs
+            if (designs.isNotEmpty() && _selectedDesign.value == null) {
+                _selectedDesign.value = designs.first()
+            }
+        }
     }
 
     private fun seedDatabase() {
@@ -185,23 +207,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _showArtistBookingDialog.value = false
     }
 
+    fun selectDesignForAr(design: TattooDesign) {
+        _selectedDesign.value = design
+        _currentScreen.value = AppScreen.ArPreview(design)
+        viewModelScope.launch(Dispatchers.Default) {
+            val bitmap = imageAdapter.loadTattooBitmap(getApplication(), design)
+            _processedTattooBitmap.value = bitmap
+        }
+    }
+
     fun selectDesign(design: TattooDesign) {
         _selectedDesign.value = design
         viewModelScope.launch(Dispatchers.Default) {
-            val rawBitmap = when (val source = design.source) {
-                is TattooDesignSource.Sample -> {
-                    BackgroundRemovalHelper.createSampleDesignBitmap(source.id, 600)
-                }
-                is TattooDesignSource.LocalUri -> {
-                    loadBitmapFromUri(source.uri)
-                }
-            }
-
-            if (rawBitmap != null) {
-                val cleanedBitmap = BackgroundRemovalHelper.removeWhiteBackground(rawBitmap)
-                _processedTattooBitmap.value = cleanedBitmap
-            }
+            val bitmap = imageAdapter.loadTattooBitmap(getApplication(), design)
+            _processedTattooBitmap.value = bitmap
         }
+    }
+
+    fun navigateToGallery() {
+        _currentScreen.value = AppScreen.Gallery
     }
 
     fun loadCustomImageFromGallery(uri: Uri) {
@@ -212,7 +236,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             source = TattooDesignSource.LocalUri(uri, "Custom Image"),
             isCustom = true
         )
-        selectDesign(customDesign)
+        selectDesignForAr(customDesign)
 
         viewModelScope.launch {
             repository.saveCustomTattoo(
@@ -230,24 +254,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 previewUri = previewUri,
                 designTitle = selectedDesign.value?.title ?: "Tattoo Preview"
             )
-        }
-    }
-
-    private fun loadBitmapFromUri(uri: Uri): Bitmap? {
-        return try {
-            val context = getApplication<Application>()
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                val source = ImageDecoder.createSource(context.contentResolver, uri)
-                ImageDecoder.decodeBitmap(source) { decoder, _, _ ->
-                    decoder.isMutableRequired = true
-                }
-            } else {
-                @Suppress("DEPRECATION")
-                MediaStore.Images.Media.getBitmap(context.contentResolver, uri)
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
         }
     }
 

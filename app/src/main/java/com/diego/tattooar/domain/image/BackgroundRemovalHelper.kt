@@ -1,13 +1,16 @@
 package com.diego.tattooar.domain.image
 
 import android.content.Context
+import android.content.res.AssetManager
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.RectF
 import androidx.annotation.WorkerThread
+import java.io.IOException
 import kotlin.math.max
 
 object BackgroundRemovalHelper {
@@ -58,6 +61,31 @@ object BackgroundRemovalHelper {
 
         mutableBitmap.setPixels(pixels, 0, width, 0, 0, width, height)
         return mutableBitmap
+    }
+
+    /**
+     * Loads a bundled CC0 sample tattoo from the app assets folder. Falls back to
+     * procedurally generated art if the asset is missing or cannot be decoded.
+     */
+    @WorkerThread
+    fun loadSampleBitmap(
+        assets: AssetManager,
+        assetPath: String,
+        sampleId: String,
+        inSampleSize: Int = 1
+    ): Bitmap {
+        val options = BitmapFactory.Options().apply {
+            inPreferredConfig = Bitmap.Config.ARGB_8888
+            inScaled = false
+            this.inSampleSize = inSampleSize.coerceAtLeast(1)
+        }
+        return try {
+            assets.open(assetPath).use { stream ->
+                BitmapFactory.decodeStream(stream, null, options)
+            } ?: createSampleDesignBitmap(sampleId, 500)
+        } catch (e: IOException) {
+            createSampleDesignBitmap(sampleId, 500)
+        }
     }
 
     /**

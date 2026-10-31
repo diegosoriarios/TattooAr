@@ -3,7 +3,13 @@ package com.diego.tattooar.data.model
 import android.net.Uri
 
 sealed class TattooDesignSource {
-    data class Sample(val id: String, val name: String, val category: String) : TattooDesignSource()
+    data class Sample(
+        val id: String,
+        val name: String,
+        val category: String,
+        val assetPath: String
+    ) : TattooDesignSource()
+
     data class LocalUri(val uri: Uri, val name: String) : TattooDesignSource()
 }
 
@@ -20,31 +26,56 @@ data class TattooDesign(
                 id = "dragon_1",
                 title = "Tribal Dragon",
                 category = "Tribal",
-                source = TattooDesignSource.Sample("dragon_1", "Tribal Dragon", "Tribal")
+                source = TattooDesignSource.Sample(
+                    id = "dragon_1",
+                    name = "Tribal Dragon",
+                    category = "Tribal",
+                    assetPath = "tattoos/tattoo_tribal_dragon.png"
+                )
             ),
             TattooDesign(
                 id = "rose_1",
-                title = "Traditional Rose",
+                title = "Tribal Rose",
                 category = "Floral",
-                source = TattooDesignSource.Sample("rose_1", "Traditional Rose", "Floral")
+                source = TattooDesignSource.Sample(
+                    id = "rose_1",
+                    name = "Tribal Rose",
+                    category = "Floral",
+                    assetPath = "tattoos/tattoo_tribal_rose.png"
+                )
             ),
             TattooDesign(
                 id = "compass_1",
-                title = "Geometric Compass",
+                title = "Compass Rose",
                 category = "Geometric",
-                source = TattooDesignSource.Sample("compass_1", "Geometric Compass", "Geometric")
+                source = TattooDesignSource.Sample(
+                    id = "compass_1",
+                    name = "Compass Rose",
+                    category = "Geometric",
+                    assetPath = "tattoos/tattoo_compass_rose.png"
+                )
             ),
             TattooDesign(
-                id = "skull_1",
-                title = "Gothic Skull",
-                category = "Gothic",
-                source = TattooDesignSource.Sample("skull_1", "Gothic Skull", "Gothic")
+                id = "wolf_1",
+                title = "Tribal Wolf",
+                category = "Tribal",
+                source = TattooDesignSource.Sample(
+                    id = "wolf_1",
+                    name = "Tribal Wolf",
+                    category = "Tribal",
+                    assetPath = "tattoos/tattoo_tribal_wolf.png"
+                )
             ),
             TattooDesign(
-                id = "moon_1",
-                title = "Minimalist Moon",
-                category = "Minimalist",
-                source = TattooDesignSource.Sample("moon_1", "Minimalist Moon", "Minimalist")
+                id = "floral_1",
+                title = "Floral Flourish",
+                category = "Floral",
+                source = TattooDesignSource.Sample(
+                    id = "floral_1",
+                    name = "Floral Flourish",
+                    category = "Floral",
+                    assetPath = "tattoos/tattoo_floral_flourish.png"
+                )
             )
         )
     }
